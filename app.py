@@ -92,9 +92,6 @@ def get_connection():
 # ── Run SQL safely ────────────────────────────────────────────────────────────
 def run_query(sql: str) -> pd.DataFrame:
     conn = get_connection()
-    if conn is None:
-        st.error(f"Database not found at `{DB_PATH}`. Place your olist.db file in the same folder as app.py.")
-        return pd.DataFrame()
     try:
         return conn.execute(sql).df()
     except Exception as e:
