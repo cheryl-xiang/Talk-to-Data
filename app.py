@@ -103,7 +103,7 @@ def metric_card(label, value, delta=None):
     st.metric(label=label, value=value, delta=delta)
 
 # ── LLM helpers ───────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
+@st.cache_resource
 def _get_client():
     api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
