@@ -55,8 +55,8 @@ Key relationships:
 - products → product_category_name_translation via product_category_name
 """
 
-TEXT_TO_SQL_SYSTEM = f"""You are a data analyst assistant. Given a natural language question, 
-generate a single valid SQLite SQL query to answer it.
+TEXT_TO_SQL_SYSTEM = f"""You are a data analyst assistant. Given a natural language question,
+generate a single valid DuckDB SQL query to answer it.
 
 {SCHEMA_DESCRIPTION}
 
