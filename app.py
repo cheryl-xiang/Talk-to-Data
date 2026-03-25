@@ -72,7 +72,9 @@ Rules:
 
 INSIGHT_SYSTEM = """You are a senior business analyst. Given a summary of key metrics from 
 an e-commerce dataset, write 3-4 sentences of sharp, actionable business insights. 
-Be specific about numbers. Use plain English. No bullet points."""
+Be specific about numbers. Use plain English. No bullet points.
+Do NOT use markdown formatting, bold, italics, or dollar signs ($). Write currency as R$ only within words, 
+e.g. R$15 million. Output plain prose only."""
 
 # ── Load CSVs into in-memory DuckDB ──────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
