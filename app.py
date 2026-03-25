@@ -337,8 +337,15 @@ with tab1:
 # TAB 2 — Chat
 # ════════════════════════════════════════════════════════════════════════════
 with tab2:
-    st.subheader("💬 Ask the Data")
-    st.caption("Ask any business question in plain English. Examples:")
+    header_col, clear_col = st.columns([6, 1])
+    with header_col:
+        st.subheader("💬 Ask the Data")
+        st.caption("Ask any business question in plain English. Examples:")
+    with clear_col:
+        st.write("")  # spacer to align button vertically
+        if st.button("🗑️ Clear", use_container_width=True, key="clear_chat"):
+            st.session_state.chat_history = []
+            st.rerun()
     
     examples = [
         "Which 5 product categories have the highest average review score?",
