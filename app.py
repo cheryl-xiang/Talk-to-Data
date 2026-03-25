@@ -14,8 +14,23 @@ st.set_page_config(
     layout="wide",
 )
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-DB_PATH = "data/olist.sqlite"
+# ── CSV sources ───────────────────────────────────────────────────────────────
+# CSVs are loaded directly from the official Olist Kaggle mirror on GitHub
+BASE_URL = "https://raw.githubusercontent.com/nicholasgasior/datascienceportfolio/main/olist"
+
+# Fallback: well-known Kaggle mirror
+KAGGLE_BASE = "https://raw.githubusercontent.com/dsrscientist/dataset1/master"
+
+CSV_TABLES = {
+    "orders":           "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/olist_orders_dataset.csv",
+    "order_items":      "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/olist_order_items_dataset.csv",
+    "order_payments":   "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/olist_order_payments_dataset.csv",
+    "order_reviews":    "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/olist_order_reviews_dataset.csv",
+    "customers":        "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/olist_customers_dataset.csv",
+    "sellers":          "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/olist_sellers_dataset.csv",
+    "products":         "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/olist_products_dataset.csv",
+    "product_category_name_translation": "https://raw.githubusercontent.com/olist/work-at-olist-data/master/datasets/product_category_name_translation.csv",
+}
 
 SCHEMA_DESCRIPTION = """
 You have access to an SQLite database with the following tables:

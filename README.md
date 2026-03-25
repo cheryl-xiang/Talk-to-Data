@@ -2,10 +2,12 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.35%2B-FF4B4B?logo=streamlit)
-![Powered by Claude](https://img.shields.io/badge/Powered%20by-Claude%20AI-blueviolet)
+![Powered by Claude](https://img.shields.io/badge/Powered%20by-Claude%20Sonnet%204.6-blueviolet)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 An AI-powered business intelligence dashboard that lets you explore the [Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) using natural language. Ask questions in plain English, get SQL, results, and charts — no SQL knowledge required.
+
+**No database setup needed** — data loads automatically from the Olist public dataset on startup.
 
 ---
 
@@ -14,13 +16,13 @@ An AI-powered business intelligence dashboard that lets you explore the [Olist B
 - **📈 BI Dashboard** — KPIs, revenue trends, top product categories, order status breakdown, revenue by state, and review score distribution
 - **🤖 AI Insights** — Claude automatically generates a plain-English business summary of the data on load
 - **💬 Natural Language Chat** — type any question about the data and get back the SQL query, a results table, and an auto-generated chart
-- **⚡ Fast queries** — powered by DuckDB reading directly from SQLite
+- **⚡ In-memory queries** — powered by DuckDB, no local database file required
 
 ---
 
 ## 🖥️ Demo
 
-> **Live demo:** *(add your Streamlit Cloud URL here after deploying)*
+> **Live demo:** https://talk-to-data-gappv5jsmdhuejeirtr6n3y.streamlit.app/
 
 Example questions you can ask:
 - *"Which 5 product categories have the highest average review score?"*
@@ -36,9 +38,9 @@ Example questions you can ask:
 | Layer | Tool |
 |---|---|
 | UI & app framework | [Streamlit](https://streamlit.io) |
-| Query engine | [DuckDB](https://duckdb.org) |
+| Query engine | [DuckDB](https://duckdb.org) (in-memory) |
 | Charts | [Plotly](https://plotly.com/python/) |
-| LLM (text-to-SQL + insights) | [Claude via Anthropic API](https://www.anthropic.com) |
+| LLM (text-to-SQL + insights) | [Claude Sonnet 4.6 via Anthropic API](https://www.anthropic.com) |
 | Data | [Olist Brazilian E-Commerce](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) |
 
 ---
@@ -56,16 +58,7 @@ cd talktodata
 pip install -r requirements.txt
 ```
 
-### 3. Get the dataset
-Download the SQLite version of the Olist dataset from Kaggle:
-
-👉 [kaggle.com/datasets/terencicp/e-commerce-dataset-by-olist-as-an-sqlite-database](https://www.kaggle.com/datasets/terencicp/e-commerce-dataset-by-olist-as-an-sqlite-database)
-
-Rename the file to `olist.db` and place it in the root of the project (same folder as `app.py`).
-
-> The database file is gitignored and will not be pushed to GitHub.
-
-### 4. Add your Anthropic API key
+### 3. Add your Anthropic API key
 
 Copy the example secrets file:
 ```bash
@@ -77,12 +70,14 @@ Then edit `.streamlit/secrets.toml` and add your key:
 ANTHROPIC_API_KEY = "your_key_here"
 ```
 
-Get an API key at [console.anthropic.com](https://console.anthropic.com).
+Get a free API key at [console.anthropic.com](https://console.anthropic.com).
 
-### 5. Run the app
+### 4. Run the app
 ```bash
 streamlit run app.py
 ```
+
+> The dataset loads automatically on first run (~20-30 seconds). No database download needed.
 
 ---
 
@@ -90,11 +85,12 @@ streamlit run app.py
 
 1. Push this repo to GitHub
 2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your repo
-3. In the Streamlit Cloud dashboard, go to **Settings → Secrets** and add:
+3. Set your main file path to `app.py`
+4. Before deploying, click **Advanced settings → Secrets** and add:
 ```toml
 ANTHROPIC_API_KEY = "your_key_here"
 ```
-4. For the database: either use a hosted SQLite alternative or instruct users to run locally
+5. Click **Deploy** — that's it
 
 ---
 
@@ -114,7 +110,16 @@ talktodata/
 
 ## 📊 Dataset
 
-This project uses the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), which contains ~100,000 orders from 2016–2018 across multiple Brazilian marketplaces.
+This project uses the [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce), containing ~100,000 orders from 2016–2018 across multiple Brazilian marketplaces. The app loads 8 CSV tables at startup:
+
+- `orders` — core order records
+- `order_items` — line items, price, freight
+- `order_payments` — payment type and value
+- `order_reviews` — customer review scores and comments
+- `customers` — customer location data
+- `sellers` — seller location data
+- `products` — product dimensions and category
+- `product_category_name_translation` — Portuguese to English category names
 
 The dataset is licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 
