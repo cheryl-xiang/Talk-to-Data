@@ -156,7 +156,7 @@ def load_charts():
 
     # Revenue over time (monthly)
     charts["revenue_over_time"] = run_query("""
-        SELECT  SELECT strftime(CAST(o.order_purchase_timestamp AS TIMESTAMP), '%Y-%m') AS month,
+        SELECT strftime(CAST(o.order_purchase_timestamp AS TIMESTAMP), '%Y-%m') AS month,
                ROUND(SUM(p.payment_value), 2) AS revenue
         FROM orders o JOIN order_payments p ON o.order_id = p.order_id
         WHERE o.order_purchase_timestamp IS NOT NULL
