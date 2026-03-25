@@ -346,7 +346,7 @@ with tab2:
         if st.button("🗑️ Clear", use_container_width=True, key="clear_chat"):
             st.session_state.chat_history = []
             st.rerun()
-    
+ 
     examples = [
         "Which 5 product categories have the highest average review score?",
         "Show monthly revenue for 2018",
@@ -354,16 +354,67 @@ with tab2:
         "What is the most common payment type?",
         "Show the top 10 sellers by total revenue",
     ]
-    
+ 
     cols = st.columns(len(examples))
     for i, ex in enumerate(examples):
         if cols[i].button(ex, key=f"ex_{i}", use_container_width=True):
             st.session_state["prefill"] = ex
-
+ 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
-
-    # Render chat history
+ 
+    # ── Input box at the top ──────────────────────────────────────────────────
+    prefill = st.session_state.pop("prefill", "")
+    question = st.chat_input("Ask a question about the data...", key="chat_input")
+    if prefill and not question:
+        question = prefill
+ 
+    if question:
+        with st.spinner("Thinking..."):
+            try:
+                result = text_to_sql(question)
+                sql = result.get("sql", "")
+                explanation = result.get("explanation", "")
+ 
+                try:
+                    df = run_query(sql)
+                except RuntimeError as qe:
+                    df = pd.DataFrame()
+                    explanation = f"Query error: {qe}"
+ 
+                fig = None
+                if not df.empty and len(df.columns) == 2 and pd.api.types.is_numeric_dtype(df.iloc[:, 1]):
+                    fig = px.bar(df, x=df.columns[0], y=df.columns[1],
+                                color_discrete_sequence=["#635BFF"])
+ 
+                # Prepend to history so newest is always at the top
+                st.session_state.chat_history.insert(0, {
+                    "role": "assistant",
+                    "content": f"_{explanation}_\n\n```sql\n{sql}\n```",
+                    "df": df,
+                    "fig": fig,
+                })
+                st.session_state.chat_history.insert(0, {
+                    "role": "user",
+                    "content": question,
+                })
+ 
+            except json.JSONDecodeError:
+                st.session_state.chat_history.insert(0, {
+                    "role": "assistant",
+                    "content": "Sorry, I couldn't parse that into a query. Try rephrasing.",
+                })
+                st.session_state.chat_history.insert(0, {"role": "user", "content": question})
+            except Exception as e:
+                st.session_state.chat_history.insert(0, {
+                    "role": "assistant",
+                    "content": f"Something went wrong: {e}",
+                })
+                st.session_state.chat_history.insert(0, {"role": "user", "content": question})
+ 
+        st.rerun()
+ 
+    # ── Render history newest-first ───────────────────────────────────────────
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -371,54 +422,3 @@ with tab2:
                 st.dataframe(msg["df"], use_container_width=True)
             if "fig" in msg and msg["fig"] is not None:
                 st.plotly_chart(msg["fig"], use_container_width=True)
-
-    # Input
-    prefill = st.session_state.pop("prefill", "")
-    question = st.chat_input("Ask a question about the data...", key="chat_input")
-    if prefill and not question:
-        question = prefill
-
-    if question:
-        # Show user message
-        with st.chat_message("user"):
-            st.markdown(question)
-        st.session_state.chat_history.append({"role": "user", "content": question})
-
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                try:
-                    result = text_to_sql(question)
-                    sql = result.get("sql", "")
-                    explanation = result.get("explanation", "")
-
-                    st.markdown(f"_{explanation}_")
-                    with st.expander("View SQL"):
-                        st.code(sql, language="sql")
-
-                    df = run_query(sql)
-                    fig = None
-
-                    if not df.empty:
-                        st.dataframe(df, use_container_width=True)
-
-                        # Auto-chart: if 2 cols and second is numeric, try a bar chart
-                        if len(df.columns) == 2 and pd.api.types.is_numeric_dtype(df.iloc[:, 1]):
-                            fig = px.bar(df, x=df.columns[0], y=df.columns[1],
-                                        color_discrete_sequence=["#635BFF"])
-                            st.plotly_chart(fig, use_container_width=True)
-
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": f"_{explanation}_\n\n```sql\n{sql}\n```",
-                        "df": df,
-                        "fig": fig,
-                    })
-
-                except json.JSONDecodeError:
-                    msg = "Sorry, I couldn't parse that question into a query. Try rephrasing."
-                    st.warning(msg)
-                    st.session_state.chat_history.append({"role": "assistant", "content": msg})
-                except Exception as e:
-                    msg = f"Something went wrong: {e}"
-                    st.error(msg)
-                    st.session_state.chat_history.append({"role": "assistant", "content": msg})
