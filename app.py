@@ -122,18 +122,43 @@ def get_insights(summary_text: str) -> str:
     )
     return msg.content[0].text
 
-def text_to_sql(question: str) -> dict:
+def _call_llm(messages: list) -> dict:
+    """Call the LLM and parse the JSON response."""
     client = _get_client()
     msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-4-6",
         max_tokens=500,
         system=TEXT_TO_SQL_SYSTEM,
-        messages=[{"role": "user", "content": question}],
+        messages=messages,
     )
     raw = msg.content[0].text.strip()
-    # strip any accidental markdown fences
     raw = re.sub(r"```json|```", "", raw).strip()
     return json.loads(raw)
+
+def text_to_sql(question: str) -> dict:
+    """Generate SQL from a natural language question, with one auto-retry on error."""
+    messages = [{"role": "user", "content": question}]
+    result = _call_llm(messages)
+    sql = result.get("sql", "")
+ 
+    # Try running the SQL — if it fails, send the error back to the LLM for a fix
+    try:
+        conn = get_connection()
+        conn.execute(sql)  # dry run to check for errors
+    except Exception as e:
+        error_msg = str(e)
+        # Add the failed attempt + error to the conversation and retry once
+        messages += [
+            {"role": "assistant", "content": f'''```json\n{json.dumps(result)}\n```'''},
+            {"role": "user", "content": (
+                f"That SQL failed with this error:\n\n{error_msg}\n\n"
+                "Please fix the SQL and return a corrected JSON response. "
+                "Remember to CAST any timestamp/date columns explicitly, e.g. CAST(col AS TIMESTAMP)."
+            )},
+        ]
+        result = _call_llm(messages)
+ 
+    return result
 
 # ── Load KPI data ─────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
