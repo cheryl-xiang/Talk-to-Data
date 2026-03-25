@@ -1,0 +1,20 @@
+# Database (too large for GitHub)
+olist.db
+*.db
+*.sqlite
+
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
