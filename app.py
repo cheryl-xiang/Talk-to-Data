@@ -362,7 +362,7 @@ with st.sidebar:
 if st.session_state.get("uploaded_table_name"):
     st.caption(f"Querying: **{st.session_state['uploaded_filename']}**")
 else:
-    st.caption("Olist Brazilian E-Commerce dataset")
+    st.caption("Querying: Olist Brazilian E-Commerce dataset")
  
 # Re-register uploaded table on every rerun (survives Streamlit reruns)
 if st.session_state.get("uploaded_df") is not None:
