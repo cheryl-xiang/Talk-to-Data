@@ -547,6 +547,15 @@ with tab1:
 # TAB 2 — Chat
 # ════════════════════════════════════════════════════════════════════════════
 with tab2:
+    # Build SQL file from history
+    sql_entries = [
+        msg for msg in st.session_state.get("chat_history", [])
+        if msg.get("role") == "assistant" and msg.get("sql")
+    ]
+    sql_export = "\n\n".join(
+        f"-- Q: {msg.get('question', '')}\n{msg['sql']}"
+        for msg in reversed(sql_entries)
+    ) if sql_entries else ""
     header_col, dl_col, clear_col = st.columns([5, 1, 1])
     with header_col:
         st.subheader("💬 Ask the Data")
@@ -555,12 +564,6 @@ with tab2:
         else:
             st.caption("Ask any business question in plain English. Examples:")
     with dl_col:
-        # Build SQL file from history
-        st.write("")
-        sql_entries = [
-            msg for msg in st.session_state.get("chat_history", [])
-            if msg.get("role") == "assistant" and msg.get("sql")
-        ]
         if sql_entries:
             sql_export = "\n\n".join(
                 f"-- Q: {msg.get('question', '')}\n{msg['sql']}"
