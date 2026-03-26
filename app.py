@@ -262,13 +262,15 @@ with st.sidebar:
     if uploaded_file is not None:
         try:
             uploaded_df = pd.read_csv(uploaded_file)
-            # Register as a table in DuckDB
-            conn = get_connection()
-            conn.register("uploaded_table", uploaded_df)
+            # Store df in session_state so it survives reruns
+            new_file = uploaded_file.name != st.session_state.get("uploaded_filename")
+            st.session_state["uploaded_df"] = uploaded_df
             st.session_state["uploaded_table_name"] = "uploaded_table"
             st.session_state["uploaded_columns"] = list(uploaded_df.columns)
             st.session_state["uploaded_filename"] = uploaded_file.name
-            st.session_state["chat_history"] = []  # clear chat on new upload
+            if new_file:
+                st.session_state["chat_history"] = []
+                st.session_state.pop("_dashboard_cache_key", None)
             st.success(f"✅ Loaded **{uploaded_file.name}**")
             st.caption(f"{len(uploaded_df):,} rows · {len(uploaded_df.columns)} columns")
             with st.expander("Preview"):
@@ -278,14 +280,12 @@ with st.sidebar:
  
     if st.session_state.get("uploaded_table_name"):
         if st.button("🗑️ Remove uploaded file", use_container_width=True):
-            conn = get_connection()
-            try:
-                conn.execute("DROP VIEW IF EXISTS uploaded_table")
-            except:
-                pass
             st.session_state.pop("uploaded_table_name", None)
             st.session_state.pop("uploaded_columns", None)
             st.session_state.pop("uploaded_filename", None)
+            st.session_state.pop("uploaded_df", None)
+            st.session_state.pop("_dashboard_cache_key", None)
+            st.session_state.pop("_dashboard_spec", None)
             st.session_state["chat_history"] = []
             st.rerun()
  
@@ -297,6 +297,13 @@ if st.session_state.get("uploaded_table_name"):
     st.caption(f"Querying: **{st.session_state['uploaded_filename']}**")
 else:
     st.caption("AI-powered business intelligence · Olist Brazilian E-Commerce dataset")
+ 
+# Re-register uploaded table on every rerun (survives Streamlit reruns)
+if st.session_state.get("uploaded_df") is not None:
+    try:
+        get_connection().register("uploaded_table", st.session_state["uploaded_df"])
+    except Exception:
+        pass
  
 # Trigger data load with a spinner
 with st.spinner("Loading dataset... (first load may take ~30 seconds)"):
@@ -406,10 +413,13 @@ with tab2:
     header_col, clear_col = st.columns([6, 1])
     with header_col:
         st.subheader("💬 Ask the Data")
-        st.caption("Ask any business question in plain English. Examples:")
+        if st.session_state.get("uploaded_filename"):
+            st.caption(f"Querying **{st.session_state['uploaded_filename']}** · ask anything about your data")
+        else:
+            st.caption("Ask any business question in plain English. Examples:")
     with clear_col:
         st.write("")  # spacer to align button vertically
-        if st.button("🗑️ Clear Queries", use_container_width=True, key="clear_chat"):
+        if st.button("🗑️ Clear", use_container_width=True, key="clear_chat"):
             st.session_state.chat_history = []
             st.rerun()
  
