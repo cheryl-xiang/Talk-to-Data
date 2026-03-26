@@ -237,6 +237,52 @@ def load_charts():
 
     return charts
 
+# ── Auto-generated dashboard for uploaded CSVs ────────────────────────────────
+def generate_uploaded_dashboard(df: pd.DataFrame, filename: str):
+    """Use Claude to analyze an uploaded CSV and generate a dynamic dashboard."""
+    client = _get_client()
+ 
+    # Sample the data for the prompt
+    sample = df.head(5).to_csv(index=False)
+    col_info = []
+    for col in df.columns:
+        dtype = str(df[col].dtype)
+        n_unique = df[col].nunique()
+        col_info.append(f"  - {col} ({dtype}, {n_unique} unique values)")
+    col_summary = "\n".join(col_info)
+ 
+    prompt = f"""You are a data analyst. A user uploaded a CSV called "{filename}".
+Here are the columns:
+{col_summary}
+ 
+Sample rows:
+{sample}
+ 
+Return a JSON object with exactly these keys:
+- "kpis": list of up to 4 objects, each with:
+    - "label": display name
+    - "sql": SQL query against table "uploaded_table" returning a single value
+- "charts": list of up to 4 objects, each with:
+    - "title": chart title
+    - "type": one of "bar", "line", "pie"
+    - "sql": SQL query against "uploaded_table" returning exactly 2 columns: a label column and a numeric column
+- "insights_summary": a plain text paragraph (no markdown) summarising the dataset in 2 sentences for an AI insights prompt
+ 
+Rules:
+- Only use columns that exist in the table
+- CAST any date/timestamp columns explicitly e.g. CAST(col AS TIMESTAMP)
+- SQL must be valid DuckDB SQL
+- Return ONLY the raw JSON, no markdown, no code fences
+"""
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = msg.content[0].text.strip()
+    raw = re.sub(r"```json|```", "", raw).strip()
+    return json.loads(raw)
+
 # ── UI ────────────────────────────────────────────────────────────────────────
 st.title("📊 TalkToData")
 st.caption("AI-powered business intelligence for the Olist Brazilian E-Commerce dataset")
@@ -317,93 +363,164 @@ tab1, tab2 = st.tabs(["📈 Dashboard", "💬 Ask the Data"])
 # TAB 1 — Dashboard
 # ════════════════════════════════════════════════════════════════════════════
 with tab1:
-    with st.spinner("Loading data..."):
-        kpis = load_kpis()
-        charts = load_charts()
-
-    # KPI row
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    with c1: metric_card("Total Orders", f"{kpis['total_orders']:,}")
-    with c2: metric_card("Total Revenue", f"R${kpis['total_revenue']:,.0f}")
-    with c3: metric_card("Avg Order Value", f"R${kpis['avg_order_value']:,.2f}")
-    with c4: metric_card("Avg Review Score", f"⭐ {kpis['avg_review']}")
-    with c5: metric_card("Customers", f"{kpis['total_customers']:,}")
-    with c6: metric_card("Sellers", f"{kpis['total_sellers']:,}")
-
-    st.divider()
-
-    # AI Insights box
-    with st.expander("🤖 AI Insights", expanded=True):
-        summary = f"""
-        Olist e-commerce summary:
-        - {kpis['total_orders']:,} total orders
-        - R${kpis['total_revenue']:,.0f} total revenue
-        - R${kpis['avg_order_value']:,.2f} average order value
-        - {kpis['avg_review']} average review score out of 5
-        - {kpis['total_customers']:,} unique customers
-        - {kpis['total_sellers']:,} sellers on the platform
-        Top categories: {', '.join(charts['top_categories']['category'].head(3).tolist()) if not charts['top_categories'].empty else 'N/A'}
-        """
-        with st.spinner("Generating insights..."):
-            insights = get_insights(summary)
-        # Strip any markdown bold/italic and escape dollar signs to prevent LaTeX rendering
-        import re as _re
-        insights_clean = _re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', insights)  # remove **bold** and *italic*
-        insights_clean = insights_clean.replace('$', r'\$')  # escape $ to prevent LaTeX
-        st.info(insights_clean)
+    # ── Uploaded CSV dashboard ────────────────────────────────────────────────
+    if st.session_state.get("uploaded_table_name"):
+        uploaded_df = get_connection().execute("SELECT * FROM uploaded_table LIMIT 1000").df()
+        filename = st.session_state.get("uploaded_filename", "uploaded file")
  
-
-    st.divider()
-
-    # Charts row 1
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.subheader("Revenue Over Time")
-        if not charts["revenue_over_time"].empty:
-            fig = px.line(charts["revenue_over_time"], x="month", y="revenue",
-                         labels={"month": "Month", "revenue": "Revenue (R$)"},
-                         color_discrete_sequence=["#635BFF"])
-            fig.update_layout(margin=dict(t=10))
+        cache_key = f"dashboard_{filename}_{len(uploaded_df)}"
+        if st.session_state.get("_dashboard_cache_key") != cache_key:
+            with st.spinner("Analysing your data and building dashboard..."):
+                try:
+                    dashboard_spec = generate_uploaded_dashboard(uploaded_df, filename)
+                    st.session_state["_dashboard_spec"] = dashboard_spec
+                    st.session_state["_dashboard_cache_key"] = cache_key
+                except Exception as e:
+                    st.error(f"Could not generate dashboard: {e}")
+                    dashboard_spec = None
+        else:
+            dashboard_spec = st.session_state.get("_dashboard_spec")
+ 
+        if dashboard_spec:
+            # KPIs
+            kpi_list = dashboard_spec.get("kpis", [])
+            if kpi_list:
+                kpi_cols = st.columns(len(kpi_list))
+                for i, kpi in enumerate(kpi_list):
+                    try:
+                        val = run_query(kpi["sql"]).iloc[0, 0]
+                        if isinstance(val, float):
+                            val = f"{val:,.2f}"
+                        elif isinstance(val, int):
+                            val = f"{val:,}"
+                        kpi_cols[i].metric(kpi["label"], val)
+                    except Exception:
+                        kpi_cols[i].metric(kpi["label"], "—")
+ 
+            st.divider()
+ 
+            # AI Insights
+            with st.expander("🤖 AI Insights", expanded=True):
+                summary = dashboard_spec.get("insights_summary", f"Dataset: {filename}")
+                with st.spinner("Generating insights..."):
+                    insights = get_insights(summary)
+                insights_clean = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"", insights)
+                insights_clean = insights_clean.replace("$", r"\$")
+                st.info(insights_clean)
+ 
+            st.divider()
+ 
+            # Charts
+            chart_list = dashboard_spec.get("charts", [])
+            if chart_list:
+                pairs = [chart_list[i:i+2] for i in range(0, len(chart_list), 2)]
+                colors = ["#635BFF", "#00C9A7", "#FF6B6B", "#FFA94D"]
+                for pair in pairs:
+                    cols = st.columns(len(pair))
+                    for i, chart_spec in enumerate(pair):
+                        with cols[i]:
+                            st.subheader(chart_spec["title"])
+                            try:
+                                df_chart = run_query(chart_spec["sql"])
+                                if df_chart.empty:
+                                    st.caption("No data")
+                                    continue
+                                xcol, ycol = df_chart.columns[0], df_chart.columns[1]
+                                ctype = chart_spec.get("type", "bar")
+                                color = colors[i % len(colors)]
+                                if ctype == "line":
+                                    fig = px.line(df_chart, x=xcol, y=ycol, color_discrete_sequence=[color])
+                                elif ctype == "pie":
+                                    fig = px.pie(df_chart, names=xcol, values=ycol,
+                                                color_discrete_sequence=px.colors.qualitative.Pastel)
+                                else:
+                                    fig = px.bar(df_chart, x=xcol, y=ycol, color_discrete_sequence=[color])
+                                fig.update_layout(margin=dict(t=10))
+                                st.plotly_chart(fig, use_container_width=True)
+                            except Exception as e:
+                                st.caption(f"Could not render chart: {e}")
+ 
+    # ── Default Olist dashboard ───────────────────────────────────────────────
+    else:
+        with st.spinner("Loading data..."):
+            kpis = load_kpis()
+            charts = load_charts()
+ 
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        with c1: metric_card("Total Orders", f"{kpis['total_orders']:,}")
+        with c2: metric_card("Total Revenue", f"R${kpis['total_revenue']:,.0f}")
+        with c3: metric_card("Avg Order Value", f"R${kpis['avg_order_value']:,.2f}")
+        with c4: metric_card("Avg Review Score", f"⭐ {kpis['avg_review']}")
+        with c5: metric_card("Customers", f"{kpis['total_customers']:,}")
+        with c6: metric_card("Sellers", f"{kpis['total_sellers']:,}")
+ 
+        st.divider()
+ 
+        with st.expander("🤖 AI Insights", expanded=True):
+            summary = f"""
+            Olist e-commerce summary:
+            - {kpis['total_orders']:,} total orders
+            - R${kpis['total_revenue']:,.0f} total revenue
+            - R${kpis['avg_order_value']:,.2f} average order value
+            - {kpis['avg_review']} average review score out of 5
+            - {kpis['total_customers']:,} unique customers
+            - {kpis['total_sellers']:,} sellers on the platform
+            Top categories: {', '.join(charts['top_categories']['category'].head(3).tolist()) if not charts['top_categories'].empty else 'N/A'}
+            """
+            with st.spinner("Generating insights..."):
+                insights = get_insights(summary)
+            insights_clean = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", insights)
+            insights_clean = insights_clean.replace("$", r"\$")
+            st.info(insights_clean)
+ 
+        st.divider()
+ 
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.subheader("Revenue Over Time")
+            if not charts["revenue_over_time"].empty:
+                fig = px.line(charts["revenue_over_time"], x="month", y="revenue",
+                             labels={"month": "Month", "revenue": "Revenue (R$)"},
+                             color_discrete_sequence=["#635BFF"])
+                fig.update_layout(margin=dict(t=10))
+                st.plotly_chart(fig, use_container_width=True)
+ 
+        with col2:
+            st.subheader("Order Status")
+            if not charts["order_status"].empty:
+                fig = px.pie(charts["order_status"], names="order_status", values="count",
+                            color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig.update_layout(margin=dict(t=10), showlegend=True)
+                st.plotly_chart(fig, use_container_width=True)
+ 
+        col3, col4 = st.columns([1, 1])
+        with col3:
+            st.subheader("Top 10 Categories by Revenue")
+            if not charts["top_categories"].empty:
+                fig = px.bar(charts["top_categories"], x="revenue", y="category",
+                            orientation="h",
+                            labels={"revenue": "Revenue (R$)", "category": ""},
+                            color_discrete_sequence=["#00C9A7"])
+                fig.update_layout(margin=dict(t=10), yaxis=dict(autorange="reversed"))
+                st.plotly_chart(fig, use_container_width=True)
+ 
+        with col4:
+            st.subheader("Revenue by State")
+            if not charts["revenue_by_state"].empty:
+                fig = px.bar(charts["revenue_by_state"], x="state", y="revenue",
+                            labels={"state": "State", "revenue": "Revenue (R$)"},
+                            color_discrete_sequence=["#FF6B6B"])
+                fig.update_layout(margin=dict(t=10))
+                st.plotly_chart(fig, use_container_width=True)
+ 
+        st.subheader("Review Score Distribution")
+        if not charts["review_dist"].empty:
+            fig = px.bar(charts["review_dist"], x="review_score", y="count",
+                        labels={"review_score": "Score", "count": "Number of Reviews"},
+                        color="review_score",
+                        color_continuous_scale="RdYlGn")
+            fig.update_layout(margin=dict(t=10), showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        st.subheader("Order Status")
-        if not charts["order_status"].empty:
-            fig = px.pie(charts["order_status"], names="order_status", values="count",
-                        color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig.update_layout(margin=dict(t=10), showlegend=True)
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Charts row 2
-    col3, col4 = st.columns([1, 1])
-    with col3:
-        st.subheader("Top 10 Categories by Revenue")
-        if not charts["top_categories"].empty:
-            fig = px.bar(charts["top_categories"], x="revenue", y="category",
-                        orientation="h",
-                        labels={"revenue": "Revenue (R$)", "category": ""},
-                        color_discrete_sequence=["#00C9A7"])
-            fig.update_layout(margin=dict(t=10), yaxis=dict(autorange="reversed"))
-            st.plotly_chart(fig, use_container_width=True)
-
-    with col4:
-        st.subheader("Revenue by State")
-        if not charts["revenue_by_state"].empty:
-            fig = px.bar(charts["revenue_by_state"], x="state", y="revenue",
-                        labels={"state": "State", "revenue": "Revenue (R$)"},
-                        color_discrete_sequence=["#FF6B6B"])
-            fig.update_layout(margin=dict(t=10))
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Review distribution
-    st.subheader("Review Score Distribution")
-    if not charts["review_dist"].empty:
-        fig = px.bar(charts["review_dist"], x="review_score", y="count",
-                    labels={"review_score": "Score", "count": "Number of Reviews"},
-                    color="review_score",
-                    color_continuous_scale="RdYlGn")
-        fig.update_layout(margin=dict(t=10), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
